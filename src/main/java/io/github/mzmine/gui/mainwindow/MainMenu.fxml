@@ -97,7 +97,15 @@
 
     <SeparatorMenuItem/>
     <MenuItem text="Exit" onAction="#exitApplication"/>
+
+    <MenuItem text="Test Network" onAction="#openTestNetworkVis">
+      <accelerator>
+        <KeyCodeCombination alt="UP" code="N"
+          control="UP" meta="UP" shift="UP" shortcut="DOWN"/>
+      </accelerator>
+    </MenuItem>
   </Menu>
+
 
 
   <!-- RAW DATA METHODS -->
