@@ -248,6 +248,7 @@ public class NetworkPane extends BorderPane {
     // wrap in stackpane to make sure coordinates work properly.
     // Might be confused by other components in the same pane
     StackPane graphpane = new StackPane(view);
+    view.setStyle("-fx-effect: innershadow(three-pass-box, gray, 12 , 0.5, 1, 1);");
     this.setCenter(graphpane);
 
     // enable selection of edges by mouse
@@ -303,9 +304,7 @@ public class NetworkPane extends BorderPane {
         last = new Point2D(e.getX(), e.getY());
       }
     });
-    view.setOnMouseReleased(e -> {
-      last = null;
-    });
+    view.setOnMouseReleased(e -> last = null);
     view.setOnMouseDragged(e -> {
       if (last != null) {
         // translate
