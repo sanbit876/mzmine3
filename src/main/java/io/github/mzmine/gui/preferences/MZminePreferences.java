@@ -1,19 +1,26 @@
 /*
- * Copyright 2006-2022 The MZmine Development Team
+ * Copyright (c) 2004-2022 The MZmine Development Team
  *
- * This file is part of MZmine.
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
  *
- * MZmine is free software; you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation; either version 2 of the
- * License, or (at your option) any later version.
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
  *
- * MZmine is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
- * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with MZmine; if not,
- * write to the Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 package io.github.mzmine.gui.preferences;
@@ -115,8 +122,8 @@ public class MZminePreferences extends SimpleParameterSet {
       "Chart parameters", "The default chart parameters to be used throughout MZmine",
       new ChartThemeParameters());
 
-  public static final BooleanParameter darkMode = new BooleanParameter("Dark mode",
-      "Enables dark mode", false);
+  public static final ComboParameter<Themes> theme = new ComboParameter<>("Theme",
+      "Select JavaFX style to theme the MZmine window.", Themes.values(), Themes.MZMINE_LIGHT);
 
   public static final BooleanParameter presentationMode = new BooleanParameter("Presentation mode",
       "If checked, fonts in the MZmine gui will be enlarged. The chart fonts are still controlled by the chart theme.",
@@ -153,6 +160,14 @@ public class MZminePreferences extends SimpleParameterSet {
   public static final BooleanParameter showTempFolderAlert = new BooleanParameter("Show temp alert",
       "Show temp folder alert", true);
 
+  public static final ComboParameter<ImageNormalization> imageNormalization = new ComboParameter<ImageNormalization>(
+      "Normalize images",
+      "Specifies if displayed images shall be normalized to the average TIC or shown according to the raw data."
+          + "only applies to newly generated plots.", ImageNormalization.values(),
+      ImageNormalization.NO_NORMALIZATION);
+
+  private boolean isDarkMode = false;
+
   public MZminePreferences() {
     super(new Parameter[]{
         // start with performance
@@ -164,8 +179,8 @@ public class MZminePreferences extends SimpleParameterSet {
         // how to format unit strings
         unitFormat,
         // other preferences
-        defaultColorPalette, defaultPaintScale, chartParam, darkMode, presentationMode,
-        showPrecursorWindow, imsModuleWarnings, windowSetttings, sendErrorEMail,
+        defaultColorPalette, defaultPaintScale, chartParam, theme, presentationMode,
+        imageNormalization, showPrecursorWindow, imsModuleWarnings, windowSetttings, sendErrorEMail,
         // silent parameters without controls
         showTempFolderAlert});
   }
@@ -187,8 +202,8 @@ public class MZminePreferences extends SimpleParameterSet {
         new Parameter[]{mzFormat, rtFormat, mobilityFormat, ccsFormat, intensityFormat, ppmFormat,
             scoreFormat, unitFormat});
     dialog.addParameterGroup("Visuals",
-        new Parameter[]{defaultColorPalette, defaultPaintScale, chartParam, darkMode,
-            presentationMode, showPrecursorWindow});
+        new Parameter[]{defaultColorPalette, defaultPaintScale, chartParam, theme,
+            presentationMode, showPrecursorWindow, imageNormalization});
     dialog.addParameterGroup("Other", new Parameter[]{sendErrorEMail,
         // imsModuleWarnings, showTempFolderAlert, windowSetttings  are hidden parameters
     });
@@ -211,30 +226,20 @@ public class MZminePreferences extends SimpleParameterSet {
       // Repaint windows to update number formats
       // MZmineCore.getDesktop().getMainWindow().repaint();
 
-      MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets()
-          .removeIf(e -> e.contains("_dark.css"));
-      MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets()
-          .removeIf(e -> e.contains("_light.css"));
-      Boolean darkMode = MZmineCore.getConfiguration().getPreferences()
-          .getParameter(MZminePreferences.darkMode).getValue();
-      if (darkMode) {
-        MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets()
-            .add(getClass().getResource("/themes/MZmine_dark.css").toExternalForm());
-      } else {
-        MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets()
-            .add(getClass().getResource("/themes/MZmine_light.css").toExternalForm());
-      }
+      final Themes theme = getValue(MZminePreferences.theme);
+      theme.apply(MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets());
 
-      MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets()
-          .removeIf(e -> e.contains("MZmine_default"));
+      System.out.println(
+          MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets().toString());
+
       Boolean presentation = MZmineCore.getConfiguration().getPreferences()
           .getParameter(MZminePreferences.presentationMode).getValue();
       if (presentation) {
-        MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets().add(
-            getClass().getResource("/themes/MZmine_default_presentation.css").toExternalForm());
+        MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets()
+            .add("themes/MZmine_default_presentation.css");
       } else {
         MZmineCore.getDesktop().getMainWindow().getScene().getStylesheets()
-            .add(getClass().getResource("/themes/MZmine_default.css").toExternalForm());
+            .removeIf(e -> e.contains("MZmine_default_presentation"));
       }
     }
 
@@ -272,4 +277,7 @@ public class MZminePreferences extends SimpleParameterSet {
     }
   }
 
+  public boolean isDarkMode() {
+    return getValue(MZminePreferences.theme).isDark();
+  }
 }

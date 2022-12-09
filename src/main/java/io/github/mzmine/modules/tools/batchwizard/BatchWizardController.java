@@ -1,19 +1,26 @@
 /*
- * Copyright 2006-2022 The MZmine Development Team
+ * Copyright (c) 2004-2022 The MZmine Development Team
  *
- * This file is part of MZmine.
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
  *
- * MZmine is free software; you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation; either version 2 of the
- * License, or (at your option) any later version.
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
  *
- * MZmine is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
- * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with MZmine; if not,
- * write to the Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 package io.github.mzmine.modules.tools.batchwizard;
@@ -111,7 +118,7 @@ import io.github.mzmine.util.RangeUtils;
 import io.github.mzmine.util.files.FileAndPathUtil;
 import io.github.mzmine.util.maths.Weighting;
 import io.github.mzmine.util.maths.similarity.SimilarityMeasure;
-import io.github.mzmine.util.scans.SpectraMerging.MergingType;
+import io.github.mzmine.util.scans.SpectraMerging.IntensityMergingType;
 import io.github.mzmine.util.scans.similarity.HandleUnmatchedSignalOptions;
 import io.github.mzmine.util.scans.similarity.SpectralSimilarityFunction;
 import io.github.mzmine.util.scans.similarity.Weights;
@@ -123,6 +130,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import javafx.collections.FXCollections;
+import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -158,6 +166,8 @@ public class BatchWizardController {
   public ToggleGroup massSpec;
   public RadioButton rbHPLC;
   public RadioButton rbUHPLC;
+  @FXML
+  private RadioButton rbHILIC;
   public ToggleGroup hplc;
   public CheckBox cbIonMobility;
   public Button btnSetMsDefaults;
@@ -214,7 +224,9 @@ public class BatchWizardController {
     cbPolarity.setItems(FXCollections.observableArrayList(Polarity.values()));
     cbPolarity.setValue(Polarity.Positive);
 
-    cbMobilityType.setItems(FXCollections.observableArrayList(MobilityType.values()));
+    cbMobilityType.setItems(
+        FXCollections.observableArrayList(MobilityType.TIMS, MobilityType.DRIFT_TUBE,
+            MobilityType.TRAVELING_WAVE));
     cbMobilityType.setValue(MobilityType.TIMS);
 
     rbUHPLC.setSelected(true);
@@ -249,6 +261,10 @@ public class BatchWizardController {
     }
     if (rbHPLC.isSelected()) {
       DefaultLcParameters.hplc.setToParameterSet(hplcParameters);
+      hplcDialog.setParameterValuesToComponents();
+    }
+    if (rbHILIC.isSelected()) {
+      DefaultLcParameters.hilic.setToParameterSet(hplcParameters);
       hplcDialog.setParameterValuesToComponents();
     }
     // TODO add GC workflow
@@ -297,19 +313,31 @@ public class BatchWizardController {
   private BatchQueue createQueue(boolean useExport, File exportPath) {
     final BatchQueue q = new BatchQueue();
     q.add(makeImportTask(files, libraryFiles));
-    q.add(makeMassDetectionStep(msParameters, 1));
-    q.add(makeMassDetectionStep(msParameters, 2));
 
-    if (cbIonMobility.isSelected() && Arrays.stream(filesComponent.getValue())
-        .anyMatch(file -> file.getName().toLowerCase().endsWith(".mzml"))) {
+    final boolean isImsFromMzml =
+        cbIonMobility.isSelected() && Arrays.stream(filesComponent.getValue())
+            .anyMatch(file -> file.getName().toLowerCase().endsWith(".mzml"));
+
+    if (cbIonMobility.isSelected()) {
+      if (!isImsFromMzml) { // == Bruker file
+        q.add(makeMassDetectionStep(msParameters, 1, SelectedScanTypes.FRAMES));
+      }
+      q.add(makeMassDetectionStep(msParameters, 1, SelectedScanTypes.MOBLITY_SCANS));
+      q.add(makeMassDetectionStep(msParameters, 2, SelectedScanTypes.MOBLITY_SCANS));
+    } else {
+      q.add(makeMassDetectionStep(msParameters, 1, SelectedScanTypes.SCANS));
+      q.add(makeMassDetectionStep(msParameters, 2, SelectedScanTypes.SCANS));
+    }
+
+    if (isImsFromMzml) {
       q.add(makeMobilityScanMergerStep(msParameters));
     }
 
     q.add(makeAdapStep(msParameters, hplcParameters));
-
     q.add(makeSmoothingStep(hplcParameters, true, false));
     q.add(makeRtResolvingStep(msParameters, hplcParameters,
         cbIonMobility.isSelected() && cbMobilityType.getValue() == MobilityType.TIMS));
+
     if (cbIonMobility.isSelected()) {
       q.add(makeImsExpanderStep(msParameters, hplcParameters));
       q.add(makeSmoothingStep(hplcParameters, false, true));
@@ -373,9 +401,9 @@ public class BatchWizardController {
     param.setParameter(RowsFilterParameters.MIN_FEATURE_COUNT, minSamples > 1);
     param.getParameter(RowsFilterParameters.MIN_FEATURE_COUNT).getEmbeddedParameter()
         .setValue((double) minSamples);
-    // use the new isotope filter instead of two isotope peaks
+
     param.setParameter(RowsFilterParameters.MIN_ISOTOPE_PATTERN_COUNT, false);
-    param.setParameter(RowsFilterParameters.ISOTOPE_FILTER_13C, true);
+    param.setParameter(RowsFilterParameters.ISOTOPE_FILTER_13C, filter13C);
 
     final Isotope13CFilterParameters filterIsoParam = param.getParameter(
         RowsFilterParameters.ISOTOPE_FILTER_13C).getEmbeddedParameters();
@@ -474,15 +502,25 @@ public class BatchWizardController {
   }
 
   private MZmineProcessingStep<MZmineProcessingModule> makeMassDetectionStep(
-      @NotNull final ParameterSet msParameters, int msLevel) {
+      @NotNull final ParameterSet msParameters, int msLevel, SelectedScanTypes scanTypes) {
 
     final ParameterSet detectorParam = MZmineCore.getConfiguration()
         .getModuleParameters(AutoMassDetector.class).cloneParameterSet();
-    detectorParam.getParameter(AutoMassDetectorParameters.noiseLevel).setValue(
-        msLevel == 1 ? msParameters.getParameter(
-            BatchWizardMassSpectrometerParameters.ms1NoiseLevel).getValue()
-            : msParameters.getParameter(BatchWizardMassSpectrometerParameters.ms2NoiseLevel)
-                .getValue());
+
+    final double noiseLevel;
+    if (msLevel == 1 && scanTypes == SelectedScanTypes.MOBLITY_SCANS) {
+      noiseLevel =
+          msParameters.getParameter(BatchWizardMassSpectrometerParameters.ms1NoiseLevel).getValue()
+              / 10; // lower threshold for mobility scans
+    } else if (msLevel >= 2) {
+      noiseLevel = msParameters.getParameter(BatchWizardMassSpectrometerParameters.ms2NoiseLevel)
+          .getValue();
+    } else {
+      noiseLevel = msParameters.getParameter(BatchWizardMassSpectrometerParameters.ms1NoiseLevel)
+          .getValue();
+    }
+    detectorParam.getParameter(AutoMassDetectorParameters.noiseLevel).setValue(noiseLevel);
+
     // per default do not detect isotope signals below noise. this might introduce too many signals
     // for the isotope finder later on and confuse users
     detectorParam.setParameter(AutoMassDetectorParameters.detectIsotopes, false);
@@ -501,7 +539,7 @@ public class BatchWizardController {
     param.getParameter(MassDetectionParameters.dataFiles)
         .setValue(new RawDataFilesSelection(RawDataFilesSelectionType.BATCH_LAST_FILES));
     param.getParameter(MassDetectionParameters.scanSelection).setValue(new ScanSelection(msLevel));
-    param.getParameter(MassDetectionParameters.scanTypes).setValue(SelectedScanTypes.SCANS);
+    param.getParameter(MassDetectionParameters.scanTypes).setValue(scanTypes);
     param.getParameter(MassDetectionParameters.massDetector).setValue(
         new MZmineProcessingStepImpl<>(MZmineCore.getModuleInstance(AutoMassDetector.class),
             detectorParam));
@@ -521,7 +559,7 @@ public class BatchWizardController {
     param.setParameter(MobilityScanMergerParameters.scanSelection, new ScanSelection());
     param.setParameter(MobilityScanMergerParameters.noiseLevel,
         0d); // the noise level of the mass detector already did all the filtering we want (at least in the wizard)
-    param.setParameter(MobilityScanMergerParameters.mergingType, MergingType.SUMMED);
+    param.setParameter(MobilityScanMergerParameters.mergingType, IntensityMergingType.SUMMED);
     param.setParameter(MobilityScanMergerParameters.weightingType, Weighting.LINEAR);
 
     final RawDataFilesSelection rawDataFilesSelection = new RawDataFilesSelection(
@@ -643,6 +681,9 @@ public class BatchWizardController {
     groupParam.getParameter(GroupMS2SubParameters.outputNoiseLevel).getEmbeddedParameter().setValue(
         msParameters.getParameter(BatchWizardMassSpectrometerParameters.ms2NoiseLevel).getValue()
             * 2);
+    groupParam.setParameter(GroupMS2SubParameters.outputNoiseLevelRelative, hasIMS);
+    groupParam.getParameter(GroupMS2SubParameters.outputNoiseLevelRelative).getEmbeddedParameter()
+        .setValue(0.1);
 
     param.setParameter(MinimumSearchFeatureResolverParameters.dimension,
         ResolvingDimension.RETENTION_TIME);
@@ -701,6 +742,11 @@ public class BatchWizardController {
         .getEmbeddedParameter().setValue(
             msParameters.getParameter(BatchWizardMassSpectrometerParameters.ms2NoiseLevel).getValue()
                 * 2);
+    param.getParameter(MinimumSearchFeatureResolverParameters.groupMS2Parameters)
+        .getEmbeddedParameters().setParameter(GroupMS2SubParameters.outputNoiseLevelRelative, true);
+    param.getParameter(MinimumSearchFeatureResolverParameters.groupMS2Parameters)
+        .getEmbeddedParameters().getParameter(GroupMS2SubParameters.outputNoiseLevelRelative)
+        .getEmbeddedParameter().setValue(0.01);
 
     param.setParameter(MinimumSearchFeatureResolverParameters.dimension,
         ResolvingDimension.MOBILITY);

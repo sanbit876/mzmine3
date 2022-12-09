@@ -1,19 +1,26 @@
 /*
- * Copyright 2006-2022 The MZmine Development Team
+ * Copyright (c) 2004-2022 The MZmine Development Team
  *
- * This file is part of MZmine.
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
  *
- * MZmine is free software; you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation; either version 2 of the
- * License, or (at your option) any later version.
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
  *
- * MZmine is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
- * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with MZmine; if not,
- * write to the Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 package io.github.mzmine.main;
@@ -317,6 +324,28 @@ public final class MZmineCore {
     return getInstance().initializedModules.values();
   }
 
+  /**
+   * Creates a new empty raw data file with the same type and name+suffix like raw
+   *
+   * @param raw     defines base name and type of raw data file, standard, IMS, or imaging
+   * @param suffix  add a suffix to the raw.name
+   * @param storage the storage to store data on disk for this file
+   * @return new data file of the same type
+   * @throws IOException
+   */
+  public static RawDataFile createNewFile(@NotNull RawDataFile raw, @NotNull final String suffix,
+      @Nullable final MemoryMapStorage storage) throws IOException {
+    String newName = raw.getName() + " " + suffix;
+    String absPath = raw.getAbsolutePath();
+    if (raw instanceof IMSRawDataFile) {
+      return createNewIMSFile(newName, absPath, storage);
+    } else if (raw instanceof ImagingRawDataFileImpl) {
+      return createNewImagingFile(newName, absPath, storage);
+    } else {
+      return new RawDataFileImpl(newName, absPath, storage);
+    }
+  }
+
   public static RawDataFile createNewFile(@NotNull final String name,
       @Nullable final String absPath, @Nullable final MemoryMapStorage storage) throws IOException {
     return new RawDataFileImpl(name, absPath, storage);
@@ -346,10 +375,7 @@ public final class MZmineCore {
       if ((versionString == null) || (versionString.startsWith("$"))) {
         return new Semver("3-SNAPSHOT", SemverType.LOOSE);
       }
-      Semver version = new Semver(versionString, SemverType.LOOSE);
-      // for now add beta here - jpackage does not work with -beta at version
-      version = version.withSuffix("beta");
-      return version;
+      return new Semver(versionString, SemverType.LOOSE);
     } catch (Exception e) {
       e.printStackTrace();
       return new Semver("3-SNAPSHOT", SemverType.LOOSE);
@@ -446,7 +472,7 @@ public final class MZmineCore {
     return getInstance().storageList;
   }
 
-  protected void init() {
+  private void init() {
     // In the beginning, set the default locale to English, to avoid
     // problems with conversion of numbers etc. (e.g. decimal separator may
     // be . or , depending on the locale)
